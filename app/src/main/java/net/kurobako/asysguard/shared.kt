@@ -1,5 +1,8 @@
 package net.kurobako.asysguard
 
+import okhttp3.Interceptor
+import okhttp3.ResponseBody
+
 fun scale(
   x: Float,
   xMin: Float,
@@ -22,3 +25,30 @@ inline fun <reified T> transpose(xs: List<List<T>>): List<List<T>> {
     }
   }
 }
+
+val SafeInterceptor =
+  object : Interceptor {
+    override fun intercept(chain: Interceptor.Chain): okhttp3.Response {
+      val request = chain.request()
+      try {
+        val response = chain.proceed(request)
+        return response
+          .newBuilder()
+          .body(
+            ResponseBody.create(
+              response.body()?.contentType(),
+              response.body()!!.string(),
+            ),
+          ).build()
+      } catch (e: Exception) {
+        return okhttp3.Response
+          .Builder()
+          .request(request)
+          .protocol(okhttp3.Protocol.HTTP_1_1)
+          .code(500)
+          .message(e.message.orEmpty())
+          .body(ResponseBody.create(null, e.toString()))
+          .build()
+      }
+    }
+  }

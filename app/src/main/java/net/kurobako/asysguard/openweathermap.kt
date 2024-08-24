@@ -25,6 +25,7 @@ interface OpenWeatherMap {
         .client(
           OkHttpClient()
             .newBuilder()
+            .addInterceptor(SafeInterceptor)
             .build(),
         ).baseUrl("https://api.openweathermap.org")
         .build()

@@ -73,6 +73,7 @@ interface ASysGuardServer {
         .client(
           OkHttpClient()
             .newBuilder()
+            .addInterceptor(SafeInterceptor)
             .build(),
         ).baseUrl(baseUrl)
         .build()

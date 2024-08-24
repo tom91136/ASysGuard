@@ -268,10 +268,18 @@ int main(int argc, char *argv[]) {
   //  Config c{.host = "0.0.0.0", .port = 9000, .powerWPath = "/sys/class/hwmon/hwmon4/power1_input",
   //  .ifNames{"enp9s0"}};
 
+      std::vector<std::string> args(argv + 1, argv + argc);
+
+  if (args.size() > 1) {
+    std::cerr << "More than one arg given, ignoring the rest" << std::endl;
+  }
+  std::string configPath = "./config.json";
+  if (!args.empty()) configPath = args[0];
+
   Config config;
-  if (std::ifstream configPath("./config.json"); configPath) {
+  if (std::ifstream configFile(configPath); configFile) {
     nlohmann::json json;
-    configPath >> json;
+    configFile >> json;
     nlohmann::from_json(json, config);
     std::cout << "Found config.json" << std::endl;
   } else {

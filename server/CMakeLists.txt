@@ -75,9 +75,12 @@ target_compile_options(${PROJECT_NAME}
         -Wno-ignored-attributes
 
         "$<$<CONFIG:Release>:-O3;-march=native;-mtune=native>"
+        "$<$<CONFIG:RelWithDebInfo>:-O3;-march=native;-mtune=native>"
 )
 target_link_options(${PROJECT_NAME} PRIVATE
-        "$<$<CONFIG:Release>:-static-libgcc;-static-libstdc++>")
+        "$<$<CONFIG:Release>:-static-libgcc;-static-libstdc++>"
+        "$<$<CONFIG:RelWithDebInfo>:-static-libgcc;-static-libstdc++>"
+)
 
 
 set(SANITISE ON)
@@ -89,7 +92,7 @@ if (SANITISE)
 endif ()
 
 
-install(TARGETS ${PROJECT_NAME} CONFIGURATIONS Release)
+#install(TARGETS ${PROJECT_NAME} CONFIGURATIONS Release)
 
 if (NOT AUTOSTART_DIR)
     set(XDG_AUTOSTART_DIR $ENV{HOME}/.config/autostart)
@@ -100,17 +103,21 @@ endif ()
 
 if (AUTOSTART_DIR)
     message(STATUS "AUTOSTART_DIR is set to ${AUTOSTART_DIR}")
+    set(TARGET_FILE "${AUTOSTART_DIR}/${PROJECT_NAME}")
+    set(TARGET_CONFIG "${AUTOSTART_DIR}/config.json")
     configure_file(asysguard.desktop.in asysguard.desktop @ONLY)
     add_custom_target(install-autostart-server
             DEPENDS ${PROJECT_NAME}
             COMMENT "Copying .desktop file to ${AUTOSTART_DIR}..."
             COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/asysguard.desktop ${AUTOSTART_DIR}/.
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${PROJECT_NAME}> ${AUTOSTART_DIR}/.
     )
+
     if (EXISTS "${CMAKE_SOURCE_DIR}/config.json")
         add_custom_target(install-autostart-server-config
                 DEPENDS ${PROJECT_NAME}
                 COMMENT "Copying .json file to ${AUTOSTART_DIR}..."
-                COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/config.json ${AUTOSTART_DIR}/.
+                COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/config.json ${AUTOSTART_DIR}/.
         )
     endif ()
 else ()

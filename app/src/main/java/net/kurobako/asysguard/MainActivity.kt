@@ -113,16 +113,19 @@ class MainActivity : AppCompatActivity() {
                 LaunchedEffect(board.value) {
                   delayed(1.seconds) {
                     scope.launch(Dispatchers.Main) {
-                      server.metric().body()?.let {
-                        if (!it.displayOn) {
-                          releaseLock()
-                        } else {
-                          acquireLockAndWake()
+                      server.metric().let {
+                        if (it.isSuccessful) {
+                          val stat = it.body()
+                          if (!stat?.displayOn!!) {
+                            releaseLock()
+                          } else {
+                            acquireLockAndWake()
+                          }
+                          if (stats.size >= maxItems) {
+                            stats.removeRange(0, stats.size - (maxItems - 1))
+                          }
+                          stats.add(stat)
                         }
-                        if (stats.size >= maxItems) {
-                          stats.removeRange(0, stats.size - (maxItems - 1))
-                        }
-                        stats.add(it)
                       }
                     }
                   }

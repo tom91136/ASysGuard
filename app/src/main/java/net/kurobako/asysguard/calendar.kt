@@ -27,7 +27,14 @@ class PublishedCalendar(
             .url(url)
             .build(),
         ).await()
-    val rawIcs = withContext(Dispatchers.IO) { response.body()?.string() ?: "" }
+    val rawIcs =
+      withContext(Dispatchers.IO) {
+        if (response.isSuccessful) {
+          response.body()?.string()
+        } else {
+          ""
+        }
+      }
     val parsed = withContext(Dispatchers.Default) { Biweekly.parse(rawIcs) }
     val zone = ZoneId.systemDefault()
 
@@ -74,6 +81,7 @@ class PublishedCalendar(
       PublishedCalendar(
         OkHttpClient()
           .newBuilder()
+          .addInterceptor(SafeInterceptor)
           .build(),
         url,
       )
