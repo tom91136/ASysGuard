@@ -67,7 +67,7 @@ fun <T> StackedLineChartView(
             path,
             Brush.verticalGradient(
               listOf(
-                series.lineColour.copy(alpha = 0.7f),
+                series.lineColour.copy(alpha = 0.4f),
                 Color.Transparent,
               ).let { if (series.invert) it.reversed() else it },
             ),

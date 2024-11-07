@@ -3,8 +3,6 @@ package net.kurobako.asysguard
 const val OUTLOOK_ICS_URL =
   "https://outlook.office365.com/owa/calendar/***REMOVED***@bristol.ac.uk/***REMOVED***/calendar.ics"
 
-const val OPEN_WEATHER_MAP_API_KEY = "***REMOVED***"
-
 const val LOCATION_MAIN_LAT = 51.454514
 const val LOCATION_MAIN_LON = -2.587910
 const val LOCATION_MAIN_TIMEZONE = "Europe/London"

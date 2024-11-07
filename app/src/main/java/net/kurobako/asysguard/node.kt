@@ -153,7 +153,7 @@ fun MonitorPreview() {
 
   MonitorPanel(
     listOf(nodeStat1, nodeStat2, nodeStat3),
-    TextStyle(color = Color.White, fontSize = 12.sp),
+    TextStyle(color = Color.White, fontSize = 13.sp),
   )
 }
 
@@ -265,10 +265,10 @@ fun MemoryUsage(
         0f,
         xs.maxOfOrNull { it.memoryTotalBytes }?.toFloat() ?: 0f,
         listOf(
-          Series(xs.map { it.memoryFreeBytes }, Colours.pick(8), true),
-          Series(xs.map { it.memoryBufferedBytes }, Colours.pick(5), true),
-          Series(xs.map { it.memoryCachedBytes }, Colours.pick(8), true),
-          Series(used, Colours.pick(9), true),
+          Series(xs.map { it.memoryFreeBytes }, Colours.pick(8), false),
+          Series(xs.map { it.memoryBufferedBytes }, Colours.pick(5), false),
+          Series(xs.map { it.memoryCachedBytes }, Colours.pick(8), false),
+          Series(used, Colours.pick(12), true),
         ),
       ),
       { it.toFloat() },

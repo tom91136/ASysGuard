@@ -15,12 +15,12 @@ plugins {
 }
 android {
   namespace = "net.kurobako.asysguard"
-  compileSdk = 34
+  compileSdk = 35
 
   defaultConfig {
     applicationId = "net.kurobako.asysguard"
     minSdk = 24
-    targetSdk = 34
+    targetSdk = 35
     versionCode = 1
     versionName = "1.0"
 

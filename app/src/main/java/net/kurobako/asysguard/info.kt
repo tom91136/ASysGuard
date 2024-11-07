@@ -79,10 +79,11 @@ fun InfoPanel(
   labelStyle: TextStyle,
 ) {
   val now = remember { mutableStateOf(ZonedDateTime.now()) }
-  val owm = remember { OpenWeatherMap.create() }
+  val owm = remember { OpenMetro.create() }
   val cal = remember { PublishedCalendar.create(calIcsUrl) }
 
-  val hourlyOwnData = remember { mutableStateOf(emptyList<OneCall.Hourly>()) }
+  val forecast =
+    remember { mutableStateOf(Pair(ZoneId.systemDefault(), Forecast.Hourly())) }
   val calendarData = remember { mutableStateOf(emptyList<PublishedCalendar.Event>()) }
 
   val scope = rememberCoroutineScope()
@@ -97,21 +98,21 @@ fun InfoPanel(
       while (true) {
         try {
           val response =
-            owm.oneCall(
+            owm.forecast(
               lat = LOCATION_MAIN_LAT,
               lon = LOCATION_MAIN_LON,
-              exclude = "daily,alerts,minutely,current",
-              appid = OPEN_WEATHER_MAP_API_KEY,
             )
           if (!response.isSuccessful) {
             throw RuntimeException("Retrofit request did not succeed: ${response.raw()}")
           } else {
-            hourlyOwnData.value = response.body()?.hourly ?: emptyList()
+            response.body()?.let {
+              forecast.value = Pair(it.timezone, it.hourly)
+            }
           }
         } catch (e: Exception) {
           Log.e(this::class.java.name, "Request failed", e)
         }
-        delay(10.minutes)
+        delay(5.minutes)
       }
     }
     scope.launch(Dispatchers.Main) {
@@ -170,7 +171,7 @@ fun InfoPanel(
       }
 
       Row(Modifier.weight(1.5f)) {
-        WeatherChart(hourlyOwnData.value, labelStyle)
+        WeatherChart(forecast.value.first, forecast.value.second, labelStyle)
       }
     }
     Column(Modifier.weight(1f)) {
@@ -376,21 +377,30 @@ fun AnalogueClock(now: ZonedDateTime) {
   }
 }
 
-const val ZERO_K_IN_C = -273.15f
-
 @Composable
 fun WeatherChart(
-  xs: List<OneCall.Hourly>,
+  zone: ZoneId,
+  hourly: Forecast.Hourly,
   labelStyle: TextStyle,
 ) {
-  val temps = xs.map { it.tempKelvin.toFloat() + ZERO_K_IN_C }
-  val feelTemps = xs.map { it.feelsLikeKelvin.toFloat() + ZERO_K_IN_C }
-  val rain = xs.map { it.probabilityOfPrecipitationPct.toFloat() }
+  val now = Instant.now()
+  val limit = now.plus(Duration.ofDays(4))
+
+  val timeInstants = hourly.times.map { it.atZone(zone).toInstant() }
+  val startIdx = timeInstants.indexOfFirst { it.isBefore(now) }
+  val endIdx = timeInstants.indexOfFirst { it.isAfter(limit) }
+
+  fun <T> List<T>.subListOrSelf(): List<T> = if (this.isEmpty()) this else this.subList(startIdx, endIdx)
+
+  val times = timeInstants.subListOrSelf()
+  val temps = hourly.temperaturesC.subListOrSelf()
+  val feelTemps = hourly.apparentTemperaturesC.subListOrSelf()
+  val rain = hourly.precipitationProbabilitiesPct.subListOrSelf()
 
   val tempMin = ((temps + feelTemps).minOfOrNull { it } ?: 0f).roundToInt()
   val tempMax = ((temps + feelTemps).maxOfOrNull { it } ?: 0f).roundToInt()
 
-  if (xs.isEmpty()) {
+  if (times.isEmpty()) {
     Box(
       modifier =
         Modifier
@@ -410,7 +420,7 @@ fun WeatherChart(
         BoxWithConstraints {
           val xStep = maxWidth / (temps.count() - 1)
           (0 until temps.count()).forEach {
-            val even = it % 2 == 0
+            val even = it % 3 == 0
             Box(
               Modifier
                 .absoluteOffset(xStep * it - 0.5.dp, y = yStep / 2)
@@ -425,9 +435,8 @@ fun WeatherChart(
               if (even) {
                 Text(
                   text =
-                    Instant
-                      .ofEpochSecond(xs[it].dt)
-                      .atZone(ZoneId.systemDefault())
+                    times[it]
+                      .atZone(zone)
                       .get(ChronoField.HOUR_OF_DAY)
                       .toString(),
                   style = labelStyle.copy(fontSize = labelStyle.fontSize * 0.8),
@@ -495,7 +504,7 @@ fun WeatherChart(
           StackedLineChartView(
             LineChart(
               0f,
-              1f,
+              100f,
               listOf(Series(rain, rainColour, fill = false, lineWidth = lineWidth)),
             ),
             { it },
