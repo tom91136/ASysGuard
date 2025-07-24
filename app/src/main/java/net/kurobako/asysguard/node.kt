@@ -1,5 +1,6 @@
 package net.kurobako.asysguard
 
+import androidx.annotation.Keep
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,11 +27,13 @@ import kotlin.math.absoluteValue
 import kotlin.math.max
 import kotlin.math.roundToLong
 
+@Keep
 data class NetworkStat(
   val inetTxTotalBytes: Long = 0,
   val inetRxTotalBytes: Long = 0,
 )
 
+@Keep
 data class CPUStat(
   val ordinal: Long = 0,
   val coreId: Long = 0,
@@ -38,10 +41,12 @@ data class CPUStat(
   val utilisation: Float = 0f,
 )
 
+@Keep
 data class DisplayStat(
   val displayOn: Boolean = false,
 )
 
+@Keep
 data class NodeStat(
   val displayOn: Boolean = false,
   val powerW: Float = 0f,
@@ -58,6 +63,10 @@ data class NodeStat(
   val epochMs: Long = 0,
 )
 
+fun Float.roundToLongOr(default: Long = -1L): Long =
+  if (this.isNaN()) default else this.roundToLong()
+
+@Keep
 interface ASysGuardServer {
   @GET("metrics.json")
   suspend fun metric(): Response<NodeStat>
@@ -215,7 +224,8 @@ fun CoreUsage(
       },
     ).windowed(groupSize, groupSize, partialWindows = true)
 
-  fun fmtGHz(khz: Long) = String.format(Locale.ENGLISH, "%.2fGHz", khz.toFloat() / (1000.0 * 1000.0))
+  fun fmtGHz(khz: Long) =
+    String.format(Locale.ENGLISH, "%.2fGHz", khz.toFloat() / (1000.0 * 1000.0))
 
   Row {
     grouped.forEach { col ->
@@ -284,12 +294,16 @@ fun MemoryUsage(
       modifier = Modifier.padding(4.dp),
     )
     Text(
-      modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(4.dp),
       text = BinaryByteUnit.format(xs.lastOrNull()?.memoryTotalBytes ?: 0),
       style = labelStyle,
     )
     Text(
-      modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.BottomEnd)
+        .padding(4.dp),
       text = "0",
       style = labelStyle,
     )
@@ -337,12 +351,16 @@ fun LoadAverage(
       modifier = Modifier.padding(4.dp),
     )
     Text(
-      modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(4.dp),
       text = "$max",
       style = labelStyle,
     )
     Text(
-      modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.BottomEnd)
+        .padding(4.dp),
       text = "0",
       style = labelStyle,
     )
@@ -363,17 +381,22 @@ fun Power(
     )
     Text("Power\n ${current}W", style = labelStyle, modifier = Modifier.padding(4.dp))
     Text(
-      modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(4.dp),
       text = "${max}W",
       style = labelStyle,
     )
     Text(
-      modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.BottomEnd)
+        .padding(4.dp),
       text = "0W",
       style = labelStyle,
     )
   }
 }
+
 
 @Composable
 fun NetworkUsage(
@@ -385,8 +408,8 @@ fun NetworkUsage(
     xs.zipWithNext { (lt, ls), (rt, rs) ->
       val elapsedS = (lt - rt).absoluteValue.toFloat() / 1000f
       Pair(
-        ((rs.inetTxTotalBytes - ls.inetTxTotalBytes) / elapsedS).roundToLong(),
-        ((rs.inetRxTotalBytes - ls.inetRxTotalBytes) / elapsedS).roundToLong(),
+        ((rs.inetTxTotalBytes - ls.inetTxTotalBytes) / elapsedS).roundToLongOr(0),
+        ((rs.inetRxTotalBytes - ls.inetRxTotalBytes) / elapsedS).roundToLongOr(0),
       )
     }
 
@@ -423,12 +446,16 @@ fun NetworkUsage(
       modifier = Modifier.padding(4.dp),
     )
     Text(
-      modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.TopEnd)
+        .padding(4.dp),
       text = BinaryByteUnit.format(txMax),
       style = labelStyle,
     )
     Text(
-      modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+      modifier = Modifier
+        .align(Alignment.BottomEnd)
+        .padding(4.dp),
       text = BinaryByteUnit.format(rxMax),
       style = labelStyle,
     )

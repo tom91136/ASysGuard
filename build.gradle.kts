@@ -5,3 +5,5 @@ plugins {
   alias(libs.plugins.compose.compiler) apply false
   alias(libs.plugins.ktlint.gradle) apply false
 }
+val defaultTargetSdkVersion by extra(36)
+

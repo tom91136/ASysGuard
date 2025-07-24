@@ -1,3 +1,6 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
 buildscript {
   repositories {
     maven("https://plugins.gradle.org/m2/")
@@ -7,6 +10,30 @@ buildscript {
   }
 }
 
+
+
+android {
+  defaultConfig {
+    val apiPropsFile = rootProject.file("apis.properties")
+    val apiProps = Properties().apply {
+      if (apiPropsFile.exists()) {
+        load(apiPropsFile.inputStream())
+      } else {
+        throw GradleException("Missing apis.properties - see apis.kt for required fields")
+      }
+    }
+
+    apiProps.forEach { rawKey, rawValue ->
+      val value = rawValue.toString()
+      val (type, literal) = value.toDoubleOrNull()
+        ?.let { "double" to value }
+        ?: ("String" to "\"$value\"")
+      buildConfigField(type, rawKey.toString(), literal)
+    }
+  }
+}
+
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.jetbrains.kotlin.android)
@@ -15,12 +42,12 @@ plugins {
 }
 android {
   namespace = "net.kurobako.asysguard"
-  compileSdk = 35
+  compileSdk = 36
 
   defaultConfig {
     applicationId = "net.kurobako.asysguard"
-    minSdk = 24
-    targetSdk = 35
+    minSdk = 23
+    targetSdk = rootProject.extra["defaultTargetSdkVersion"] as Int
     versionCode = 1
     versionName = "1.0"
 
@@ -32,7 +59,8 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
         "proguard-rules.pro",
@@ -42,14 +70,18 @@ android {
   }
   compileOptions {
     isCoreLibraryDesugaringEnabled = true
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+
   }
-  kotlinOptions {
-    jvmTarget = "1.8"
+  kotlin {
+    compilerOptions {
+      jvmTarget = JvmTarget.JVM_11
+    }
   }
   buildFeatures {
     compose = true
+    buildConfig = true
   }
   composeOptions {
     kotlinCompilerExtensionVersion = "1.5.1"

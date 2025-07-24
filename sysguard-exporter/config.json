@@ -1,0 +1,8 @@
+{
+  "host": "0.0.0.0",
+  "port": 9000,
+  "powerWPath": "/sys/class/hwmon/hwmon7/power1_input",
+  "ifNames": [
+    "enp8s0"
+  ]
+}

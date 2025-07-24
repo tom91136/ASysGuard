@@ -1,10 +1,9 @@
-// #include "args.hxx"
 #include <chrono>
-#include <cmath>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <fstream>
 
 #include <wayland-client.h>
 

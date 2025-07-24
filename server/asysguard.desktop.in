@@ -1,5 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=asysguard
-Exec=@TARGET_FILE@ @TARGET_CONFIG@
-Comment=Start the asysguard server

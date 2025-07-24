@@ -42,6 +42,13 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.kurobako.asysguard.BuildConfig.LOCATION_ALT_LAT
+import net.kurobako.asysguard.BuildConfig.LOCATION_ALT_LON
+import net.kurobako.asysguard.BuildConfig.LOCATION_ALT_TIMEZONE
+import net.kurobako.asysguard.BuildConfig.LOCATION_MAIN_LAT
+import net.kurobako.asysguard.BuildConfig.LOCATION_MAIN_LON
+import net.kurobako.asysguard.BuildConfig.LOCATION_MAIN_TIMEZONE
+import net.kurobako.asysguard.BuildConfig.OUTLOOK_ICS_URL
 import net.time4j.ClockUnit
 import net.time4j.Moment
 import net.time4j.PlainDate
@@ -390,7 +397,8 @@ fun WeatherChart(
   val startIdx = timeInstants.indexOfFirst { it.isBefore(now) }
   val endIdx = timeInstants.indexOfFirst { it.isAfter(limit) }
 
-  fun <T> List<T>.subListOrSelf(): List<T> = if (this.isEmpty()) this else this.subList(startIdx, endIdx)
+  fun <T> List<T>.subListOrSelf(): List<T> =
+    if (this.isEmpty()) this else this.subList(startIdx, endIdx)
 
   val times = timeInstants.subListOrSelf()
   val temps = hourly.temperaturesC.subListOrSelf()

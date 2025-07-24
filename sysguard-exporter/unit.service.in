@@ -1,0 +1,12 @@
+[Unit]
+Description=@PROJECT_NAME@ service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/@PROJECT_NAME@ @CMAKE_INSTALL_PREFIX@/share/@PROJECT_NAME@/config.json
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

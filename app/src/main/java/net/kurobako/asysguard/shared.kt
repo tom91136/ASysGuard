@@ -36,8 +36,8 @@ val SafeInterceptor =
           .newBuilder()
           .body(
             ResponseBody.create(
-              response.body()?.contentType(),
-              response.body()!!.string(),
+              response.body?.contentType(),
+              response.body!!.string(),
             ),
           ).build()
       } catch (e: Exception) {

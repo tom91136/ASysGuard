@@ -30,7 +30,7 @@ class PublishedCalendar(
     val rawIcs =
       withContext(Dispatchers.IO) {
         if (response.isSuccessful) {
-          response.body()?.string()
+          response.body?.string()
         } else {
           ""
         }

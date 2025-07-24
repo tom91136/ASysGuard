@@ -1,5 +1,6 @@
 package net.kurobako.asysguard
 
+import androidx.annotation.Keep
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
@@ -16,6 +17,7 @@ import java.lang.reflect.Type
 import java.time.LocalDateTime
 import java.time.ZoneId
 
+@Keep
 interface OpenMetro {
   @GET("/v1/forecast")
   suspend fun forecast(
@@ -55,6 +57,7 @@ interface OpenMetro {
   }
 }
 
+@Keep
 data class Forecast(
   val latitude: Double,
   val longitude: Double,

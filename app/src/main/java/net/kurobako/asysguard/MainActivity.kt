@@ -28,6 +28,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import net.kurobako.asysguard.BuildConfig.OUTLOOK_ICS_URL
+import net.kurobako.asysguard.BuildConfig.SYSGUARD_EXPORTER_HOST
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -105,7 +107,7 @@ class MainActivity : AppCompatActivity() {
               onClick = {},
             ),
           ) {
-            val server = remember { ASysGuardServer.create(ASYSGUARD_HOST) }
+            val server = remember { ASysGuardServer.create(SYSGUARD_EXPORTER_HOST) }
             when (board.value) {
               Boards.NODE -> {
                 val maxItems = 210
