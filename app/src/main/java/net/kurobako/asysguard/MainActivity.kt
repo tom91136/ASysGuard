@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import android.os.PowerManager
+import android.provider.Settings
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
@@ -77,6 +78,11 @@ class MainActivity : AppCompatActivity() {
       }
     }
 
+    val initialBoard =
+      Settings.Secure
+        .getString(contentResolver, Settings.Secure.ANDROID_ID)
+        .let { Boards.entries[(it?.hashCode() ?: 0).mod(Boards.entries.size)] }
+
     setContent {
       Surface(color = Color.Black) {
         Surface(color = Color.Black) {
@@ -96,7 +102,7 @@ class MainActivity : AppCompatActivity() {
             }
           }
 
-          val board = remember { mutableStateOf(Boards.NODE) }
+          val board = remember { mutableStateOf(initialBoard) }
           Box(
             Modifier.combinedClickable(
               enabled = true,

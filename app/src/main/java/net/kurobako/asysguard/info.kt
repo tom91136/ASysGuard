@@ -182,10 +182,26 @@ fun InfoPanel(
       }
     }
     Column(Modifier.weight(1f)) {
-      CalendarChart(
-        labelStyle = labelStyle,
-        calendarData.value,
-      )
+      Box(
+        Modifier
+          .weight(1f)
+          .fillMaxWidth(),
+      ) {
+        CalendarChart(
+          labelStyle = labelStyle,
+          calendarData.value,
+        )
+      }
+      Box(
+        Modifier
+          .weight(1f)
+          .fillMaxWidth(),
+      ) {
+        FlowCalendar(
+          labelStyle = labelStyle,
+          today = now.value.toLocalDate(),
+        )
+      }
     }
   }
 }
