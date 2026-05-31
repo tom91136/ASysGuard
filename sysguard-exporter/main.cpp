@@ -1,9 +1,13 @@
+#include <cctype>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
+#include <mutex>
+#include <set>
 
 #include <wayland-client.h>
 
@@ -15,16 +19,18 @@ template <typename T> T *bindWlInterface(wl_display *display, const wl_interface
   using Data = std::pair<T *, const wl_interface *>;
   const wl_registry_listener listener = {
       .global =
-          [](void *data, wl_registry *registry, uint32_t id, const char *name, uint32_t version) {
-            auto object = static_cast<Data *>(data);
-            if (std::strcmp(name, object->second->name) == 0) {
+          [](void *data, wl_registry *registry, const uint32_t id, const char *name, uint32_t) {
+            if (auto object = static_cast<Data *>(data); std::strcmp(name, object->second->name) == 0) {
               object->first = static_cast<T *>(wl_registry_bind(registry, id, object->second, object->second->version));
             }
           },
       .global_remove = nullptr};
   Data data{{}, interface};
-  wl_registry_add_listener(wl_display_get_registry(display), &listener, &data);
+  // listener and data are stack-local; destroy the registry so no later event reaches the dangling listener
+  wl_registry *registry = wl_display_get_registry(display);
+  wl_registry_add_listener(registry, &listener, &data);
   wl_display_roundtrip(display);
+  wl_registry_destroy(registry);
 
   if (!data.first) {
     std::cerr << "Wayland protocol " << data.second->name << " not found!" << std::endl;
@@ -37,22 +43,66 @@ template <typename T> T *bindWlInterface(wl_display *display, const wl_interface
 struct Config {
   std::string host = "0.0.0.0";
   int port = 9000;
-  std::string powerWPath{};
+  std::string powerWPath{}; // takes precedence over powerHwmonName when set
+  std::string powerHwmonName{};
+  std::string powerSensor = "power1_input";
   std::vector<std::string> ifNames{};
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(Config, host, port, powerWPath, ifNames);
+  std::vector<std::string> ifMacs{};
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(Config, host, port, powerWPath, powerHwmonName, powerSensor, ifNames,
+                                              ifMacs);
   friend std::ostream &operator<<(std::ostream &os, const Config &config) {
     os << "Config("
        << "host: " << config.host << ", "
        << "port: " << config.port << ", "
        << "powerWPath: " << (config.powerWPath.empty() ? "N/A" : config.powerWPath) << ", "
+       << "powerHwmonName: " << (config.powerHwmonName.empty() ? "N/A" : config.powerHwmonName) << ", "
+       << "powerSensor: " << config.powerSensor << ", "
        << "ifNames: [";
     for (size_t i = 0; i < config.ifNames.size(); ++i) {
       os << config.ifNames[i];
       if (i < config.ifNames.size() - 1) os << ", ";
     }
+    os << "], ifMacs: [";
+    for (size_t i = 0; i < config.ifMacs.size(); ++i) {
+      os << config.ifMacs[i];
+      if (i < config.ifMacs.size() - 1) os << ", ";
+    }
     return os << "])";
   }
 };
+
+// hwmonN index is not stable across reboots, so match on the driver name file instead.
+static std::string resolveHwmonPath(const std::string &name, const std::string &sensor) {
+  std::error_code ec;
+  for (const auto &entry : std::filesystem::directory_iterator("/sys/class/hwmon", ec)) {
+    std::ifstream nameFile(entry.path() / "name");
+    std::string n;
+    if (nameFile && std::getline(nameFile, n) && n == name) {
+      auto path = entry.path() / sensor;
+      if (std::filesystem::exists(path)) return path.string();
+    }
+  }
+  return {};
+}
+
+// ifname can change but the MAC is stable, so resolve configured MACs to current names.
+static std::set<std::string> resolveIfMacs(const std::vector<std::string> &macs) {
+  auto lower = [](std::string s) {
+    for (auto &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+  };
+  std::set<std::string> want;
+  for (const auto &m : macs) want.insert(lower(m));
+  std::set<std::string> names;
+  std::error_code ec;
+  for (const auto &entry : std::filesystem::directory_iterator("/sys/class/net", ec)) {
+    std::ifstream addrFile(entry.path() / "address");
+    std::string mac;
+    if (addrFile && std::getline(addrFile, mac) && want.count(lower(mac)))
+      names.insert(entry.path().filename().string());
+  }
+  return names;
+}
 struct NetworkStat {
   size_t inetTxTotalBytes{}, inetRxTotalBytes{};
   NLOHMANN_DEFINE_TYPE_INTRUSIVE(NetworkStat, inetTxTotalBytes, inetRxTotalBytes);
@@ -120,8 +170,11 @@ struct NodeStat {
     NodeStat stats;
     stats.displayOn = displayOn;
     auto start = std::chrono::high_resolution_clock::now();
-    if (!config.powerWPath.empty()) {
-      if (std::ifstream powerFile(config.powerWPath); powerFile) {
+    std::string powerPath = config.powerWPath;
+    if (powerPath.empty() && !config.powerHwmonName.empty())
+      powerPath = resolveHwmonPath(config.powerHwmonName, config.powerSensor);
+    if (!powerPath.empty()) {
+      if (std::ifstream powerFile(powerPath); powerFile) {
         double powerMicroW;
         powerFile >> powerMicroW;
         stats.powerW = static_cast<float>(powerMicroW / 1000000.0);
@@ -129,8 +182,10 @@ struct NodeStat {
     }
 
     static int64_t numCores = sysconf(_SC_NPROCESSORS_ONLN);
+    static std::mutex cpuMutex; // collect runs on httplib's thread pool; serialise the shared counters
     static std::vector<size_t> prevTotal(numCores, 0);
     static std::vector<size_t> prevIdle(numCores, 0);
+    std::lock_guard<std::mutex> cpuLock(cpuMutex);
 
     stats.cpus.reserve(numCores);
     for (int64_t i = 0; i < numCores; ++i) {
@@ -159,13 +214,12 @@ struct NodeStat {
         size_t total = totalIdle + totalNonIdle;
 
         auto id = label.substr(3);
-        auto ordinal = std::stol(id);
-        if (ordinal >= numCores)
+        if (auto ordinal = std::stol(id); ordinal >= numCores)
           std::cerr << "CPU label ordinal out of bounds: " << id << " (max=" << numCores << ")" << std::endl;
         else {
           size_t totalDiff = total - prevTotal[ordinal];
           size_t idleDiff = totalIdle - prevIdle[ordinal];
-          stats.cpus[id].utilisation = (1.0f - static_cast<float>(idleDiff) / static_cast<float>(totalDiff));
+          if (totalDiff > 0) stats.cpus[id].utilisation = 1.0f - static_cast<float>(idleDiff) / static_cast<float>(totalDiff);
           stats.cpus[id].ordinal = ordinal;
           prevTotal[ordinal] = total;
           prevIdle[ordinal] = totalIdle;
@@ -192,10 +246,13 @@ struct NodeStat {
       }
     }
 
+    std::set<std::string> ifNames(config.ifNames.begin(), config.ifNames.end());
+    for (auto &name : resolveIfMacs(config.ifMacs))
+      ifNames.insert(name);
     if (std::ifstream netFile("/proc/net/dev"); netFile) {
       std::string line;
       while (std::getline(netFile, line)) {
-        for (auto &ifName : config.ifNames) {
+        for (auto &ifName : ifNames) {
           if (line.find(ifName + ":") == std::string::npos) continue;
           std::istringstream ss(line);
           std::string iface;
@@ -240,22 +297,23 @@ int main(int argc, char *argv[]) {
     }
     auto *dpmsManager = bindWlInterface<org_kde_kwin_dpms_manager>(display, &org_kde_kwin_dpms_manager_interface);
     auto *output = bindWlInterface<wl_output>(display, &wl_output_interface);
-    org_kde_kwin_dpms_listener listener{
+    constexpr org_kde_kwin_dpms_listener listener{
         .supported =
-            [](void *data, struct org_kde_kwin_dpms *org_kde_kwin_dpms, uint32_t supported) {
+            [](void *, struct org_kde_kwin_dpms *, const uint32_t supported) {
               if (!supported) {
                 std::cerr << "Warning: KWin reports DPMS as unsupported" << std::endl;
               }
             },
         .mode =
-            [](void *data, struct org_kde_kwin_dpms *org_kde_kwin_dpms, uint32_t mode) {
+            [](void *data, struct org_kde_kwin_dpms *, const uint32_t mode) {
               *static_cast<std::atomic_bool *>(data) = mode == ORG_KDE_KWIN_DPMS_MODE_ON;
               std::cout << "DPMS mode changed to " << mode << "\n";
             },
 
-        .done = [](void *data, struct org_kde_kwin_dpms *org_kde_kwin_dpms) {}};
+        .done = [](void *, struct org_kde_kwin_dpms *) {} //
+    };
 
-    auto dpms = org_kde_kwin_dpms_manager_get(dpmsManager, output);
+    const auto dpms = org_kde_kwin_dpms_manager_get(dpmsManager, output);
     org_kde_kwin_dpms_add_listener(dpms, &listener, &displayOn);
     wl_display_sync(display);
     std::cout << "Monitoring for KWin DPMS events on display " << display << std::endl;
@@ -267,7 +325,7 @@ int main(int argc, char *argv[]) {
   //  Config c{.host = "0.0.0.0", .port = 9000, .powerWPath = "/sys/class/hwmon/hwmon4/power1_input",
   //  .ifNames{"enp9s0"}};
 
-      std::vector<std::string> args(argv + 1, argv + argc);
+  std::vector<std::string> args(argv + 1, argv + argc);
 
   if (args.size() > 1) {
     std::cerr << "More than one arg given, ignoring the rest" << std::endl;
@@ -290,14 +348,12 @@ int main(int argc, char *argv[]) {
 
   std::thread server([&]() {
     s.Get("/metrics.json", [&](const httplib::Request &, httplib::Response &res) {
-      nlohmann::json json;
-      json = NodeStat::collect(config, displayOn);
+      const nlohmann::json json = NodeStat::collect(config, displayOn);
       res.set_content(json.dump(), "application/json");
     });
 
     s.Get("/display.json", [&](const httplib::Request &, httplib::Response &res) {
-      nlohmann::json json;
-      json = DisplayStat{displayOn};
+      const nlohmann::json json = DisplayStat{displayOn};
       res.set_content(json.dump(), "application/json");
     });
     std::cout << "Server listening on " << config.host << ":" << config.port << std::endl;

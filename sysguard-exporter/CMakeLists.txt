@@ -10,7 +10,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/CPM.cmake)
 
 CPMAddPackage(
         GITHUB_REPOSITORY yhirose/cpp-httplib
-        VERSION 0.23.1
+        VERSION 0.46.0
         OPTIONS
         "HTTPLIB_COMPILE ON"
         "HTTPLIB_USE_OPENSSL_IF_AVAILABLE ON"
