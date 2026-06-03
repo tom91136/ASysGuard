@@ -19,8 +19,14 @@ appcompat = "1.7.1"
 material = "1.14.0"
 activity = "1.13.0"
 time4jAndroid = "4.8-2021a"
+time4jBase = "5.9.4"
+annotation = "1.9.1"
+composeMultiplatform = "1.9.3"
+coroutines = "1.10.2"
+dbusJava = "5.2.0"
 
 [libraries]
+androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 biweekly = { module = "net.sf.biweekly:biweekly", version.ref = "biweekly" }
 byteunits = { module = "com.jakewharton.byteunits:byteunits", version.ref = "byteunits" }
@@ -45,9 +51,17 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
 time4j-android = { module = "net.time4j:time4j-android", version.ref = "time4jAndroid" }
+time4j-base = { module = "net.time4j:time4j-base", version.ref = "time4jBase" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+dbus-java-core = { module = "com.github.hypfvieh:dbus-java-core", version.ref = "dbusJava" }
+dbus-java-transport-native-unixsocket = { module = "com.github.hypfvieh:dbus-java-transport-native-unixsocket", version.ref = "dbusJava" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ktlint-gradle = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 

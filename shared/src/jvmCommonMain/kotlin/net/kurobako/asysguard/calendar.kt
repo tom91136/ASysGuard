@@ -73,7 +73,7 @@ class PublishedCalendar(
               end = it.plus(Duration.between(seed.start, seed.end)),
             )
           }?.toList() ?: listOf(seed)
-      }.filter { it.start?.isAfter(start) ?: false && it.start?.isBefore(end) ?: false }
+      }.filter { it.start?.isAfter(start) ?: false && it.start.isBefore(end) }
   }
 
   companion object {

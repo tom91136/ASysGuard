@@ -1,15 +1,15 @@
 package net.kurobako.asysguard
 
-import android.graphics.Paint
-import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -32,23 +33,16 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import net.kurobako.asysguard.BuildConfig.LOCATION_ALT_LAT
-import net.kurobako.asysguard.BuildConfig.LOCATION_ALT_LON
-import net.kurobako.asysguard.BuildConfig.LOCATION_ALT_TIMEZONE
-import net.kurobako.asysguard.BuildConfig.LOCATION_MAIN_LAT
-import net.kurobako.asysguard.BuildConfig.LOCATION_MAIN_LON
-import net.kurobako.asysguard.BuildConfig.LOCATION_MAIN_TIMEZONE
-import net.kurobako.asysguard.BuildConfig.OUTLOOK_ICS_URL
 import net.time4j.ClockUnit
 import net.time4j.Moment
 import net.time4j.PlainDate
@@ -67,6 +61,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.ChronoField
 import java.util.concurrent.TimeUnit
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
@@ -74,20 +69,32 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.time.Duration.Companion.minutes
 
-@Preview(widthDp = 720, heightDp = 360)
+@Preview
 @Composable
 fun InfoPreview() {
-  InfoPanel(OUTLOOK_ICS_URL, TextStyle(color = Color.White, fontSize = 12.sp))
+  InfoPanel(
+    AppConfig(
+      sysguardExporterHost = "",
+      outlookIcsUrl = "",
+      locationMainLat = 51.45,
+      locationMainLon = -2.59,
+      locationMainTimezone = "Europe/London",
+      locationAltLat = 24.15,
+      locationAltLon = 120.68,
+      locationAltTimezone = "Asia/Taipei",
+    ),
+    TextStyle(color = Color.White, fontSize = 12.sp),
+  )
 }
 
 @Composable
 fun InfoPanel(
-  calIcsUrl: String,
+  config: AppConfig,
   labelStyle: TextStyle,
 ) {
   val now = remember { mutableStateOf(ZonedDateTime.now()) }
   val owm = remember { OpenMetro.create() }
-  val cal = remember { PublishedCalendar.create(calIcsUrl) }
+  val cal = remember { PublishedCalendar.create(config.outlookIcsUrl) }
 
   val forecast =
     remember { mutableStateOf(Pair(ZoneId.systemDefault(), Forecast.Hourly())) }
@@ -106,8 +113,8 @@ fun InfoPanel(
         try {
           val response =
             owm.forecast(
-              lat = LOCATION_MAIN_LAT,
-              lon = LOCATION_MAIN_LON,
+              lat = config.locationMainLat,
+              lon = config.locationMainLon,
             )
           if (!response.isSuccessful) {
             throw RuntimeException("Retrofit request did not succeed: ${response.raw()}")
@@ -117,7 +124,7 @@ fun InfoPanel(
             }
           }
         } catch (e: Exception) {
-          Log.e(this::class.java.name, "Request failed", e)
+          logError("InfoPanel", "Request failed", e)
         }
         delay(5.minutes)
       }
@@ -129,7 +136,7 @@ fun InfoPanel(
         try {
           calendarData.value = cal.sync(pastWindow, futureWindow)
         } catch (e: Exception) {
-          Log.w("Calendar sync failed", e)
+          logError("InfoPanel", "Calendar sync failed", e)
         } finally {
           delay(15.minutes)
         }
@@ -151,9 +158,9 @@ fun InfoPanel(
                 Modifier
                   .fillMaxWidth()
                   .fillMaxHeight(),
-              latitude = LOCATION_MAIN_LAT,
-              longitude = LOCATION_MAIN_LON,
-              time = now.value.withZoneSameInstant(ZoneId.of(LOCATION_MAIN_TIMEZONE)),
+              latitude = config.locationMainLat,
+              longitude = config.locationMainLon,
+              time = now.value.withZoneSameInstant(ZoneId.of(config.locationMainTimezone)),
               labelStyle = labelStyle,
             )
           }
@@ -163,9 +170,9 @@ fun InfoPanel(
                 Modifier
                   .fillMaxWidth()
                   .fillMaxHeight(),
-              latitude = LOCATION_ALT_LAT,
-              longitude = LOCATION_ALT_LON,
-              time = now.value.withZoneSameInstant(ZoneId.of(LOCATION_ALT_TIMEZONE)),
+              latitude = config.locationAltLat,
+              longitude = config.locationAltLon,
+              time = now.value.withZoneSameInstant(ZoneId.of(config.locationAltTimezone)),
               labelStyle = labelStyle,
             )
           }
@@ -228,8 +235,8 @@ fun SolarChart(
   val st = SolarTime.ofLocation(latitude, longitude)
   val minElevation = SunPosition.at(today.get(st.transitAtMidnight()), st).elevation.toFloat()
   val maxElevation = SunPosition.at(today.get(st.transitAtNoon()), st).elevation.toFloat()
-  val sunset = today.get(st.sunset())
-  val sunrise = today.get(st.sunrise())
+  val sunset = solarSunset(st, today)
+  val sunrise = solarSunrise(st, today)
   val dayMinutes = sunrise.until(sunset, TimeUnit.MINUTES)
   val nightMinutes = (todayTotalSeconds / 60) - dayMinutes
 
@@ -339,6 +346,8 @@ ${timeFormatter.format(time)}""",
 
 @Composable
 fun AnalogueClock(now: ZonedDateTime) {
+  val measurer = rememberTextMeasurer()
+  val numberStyle = TextStyle(color = Color.White, fontSize = 18.sp)
   Canvas(
     modifier =
       Modifier
@@ -346,8 +355,8 @@ fun AnalogueClock(now: ZonedDateTime) {
         .fillMaxWidth()
         .padding(4.dp),
   ) {
-    // Compensate for Amazon Fire's broken screen aspect ratio
-    scale(scaleX = 0.95f, scaleY = 1f) {
+    // Correct for non-square physical pixels (e.g. some Fire tablets); 1.0 is a no-op elsewhere.
+    scale(scaleX = displayAspectScaleX, scaleY = 1f) {
       val radius = min(size.width, size.height) / 2
       drawCircle(Color.White.copy(alpha = 0.1F), radius = min(size.width, size.height) / 2)
       drawCircle(
@@ -355,21 +364,16 @@ fun AnalogueClock(now: ZonedDateTime) {
         radius = min(size.width, size.height) / 2,
         style = Stroke(width = 3f),
       )
-      val labelSize = 18.sp
       for (i in 1..12) {
-        val rad = Math.toRadians((i * 30 - 90).toDouble())
-        val paint =
-          Paint().apply {
-            textSize = labelSize.toPx()
-            textAlign = Paint.Align.CENTER
-            color = Color.White.toArgb()
-          }
-        drawContext.canvas.nativeCanvas.drawText(
-          "$i",
-          (radius * 0.86f * cos(rad)).toFloat() + center.x,
-          (radius * 0.86f * sin(rad)).toFloat() + center.y -
-            (paint.ascent() + paint.descent()) / 2,
-          paint,
+        val rad = (i * 30 - 90) * PI / 180.0
+        val measured = measurer.measure(i.toString(), numberStyle)
+        drawText(
+          measured,
+          topLeft =
+            Offset(
+              (radius * 0.86f * cos(rad)).toFloat() + center.x - measured.size.width / 2f,
+              (radius * 0.86f * sin(rad)).toFloat() + center.y - measured.size.height / 2f,
+            ),
         )
       }
       rotate((-180 + now.second * (360 / 60)).toFloat()) {
@@ -436,58 +440,6 @@ fun WeatherChart(
   } else {
     BoxWithConstraints {
       val labels = (tempMin..tempMax step (abs(tempMax - tempMin) / 4)).reversed()
-      val yStep = maxHeight / labels.count()
-      val maxChartHeight = yStep * (labels.count() - 1)
-
-      @Composable
-      fun XGrids() {
-        BoxWithConstraints {
-          val xStep = maxWidth / (temps.count() - 1)
-          (0 until temps.count()).forEach {
-            val even = it % 3 == 0
-            Box(
-              Modifier
-                .absoluteOffset(xStep * it - 0.5.dp, y = yStep / 2)
-                .align(Alignment.BottomStart),
-            ) {
-              Box(
-                Modifier
-                  .width(1.dp)
-                  .height(maxChartHeight)
-                  .background(Color.White.copy(alpha = if (even) 0.3f else 0.08f)),
-              ) { }
-              if (even) {
-                Text(
-                  text =
-                    times[it]
-                      .atZone(zone)
-                      .get(ChronoField.HOUR_OF_DAY)
-                      .toString(),
-                  style = labelStyle.copy(fontSize = labelStyle.fontSize * 0.8),
-                  maxLines = 1,
-                )
-              }
-            }
-          }
-        }
-      }
-
-      @Composable
-      fun YGrids() {
-        Column {
-          repeat(labels.count()) {
-            Row(Modifier.height(yStep)) {
-              Box(
-                Modifier
-                  .height(1.dp)
-                  .fillMaxWidth()
-                  .background(Color.White.copy(alpha = 0.3f))
-                  .align(Alignment.CenterVertically),
-              ) {}
-            }
-          }
-        }
-      }
 
       val rainColour = Color(10, 169, 255)
       val tempColour = Color(252, 173, 3)
@@ -496,12 +448,7 @@ fun WeatherChart(
       @Composable
       fun Charts() {
         val lineWidth = LocalDensity.current.run { 1.dp.toPx() }
-        Box(
-          Modifier
-            .height(maxChartHeight)
-            .fillMaxWidth()
-            .align(Alignment.Center),
-        ) {
+        Box(Modifier.fillMaxSize()) {
           StackedLineChartView(
             LineChart(
               tempMin.toFloat(),
@@ -514,14 +461,7 @@ fun WeatherChart(
             LineChart(
               tempMin.toFloat(),
               tempMax.toFloat(),
-              listOf(
-                Series(
-                  feelTemps,
-                  feelTempColour,
-                  fill = false,
-                  lineWidth = lineWidth,
-                ),
-              ),
+              listOf(Series(feelTemps, feelTempColour, fill = false, lineWidth = lineWidth)),
             ),
             { it },
           )
@@ -536,24 +476,96 @@ fun WeatherChart(
         }
       }
 
-      Row {
-        Column {
-          labels.forEach {
-            Row(Modifier.height(yStep)) {
-              Text(
-                "$it°C",
-                style = labelStyle,
-                modifier = Modifier.align(Alignment.CenterVertically),
+      // SpaceBetween bottom-anchors the last Y label so the chart fills without reserved padding.
+      @Composable
+      fun YGrids() {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+          repeat(labels.count()) {
+            Box(
+              Modifier
+                .height(1.dp)
+                .fillMaxWidth()
+                .background(Color.White.copy(alpha = 0.3f)),
+            )
+          }
+        }
+      }
+
+      @Composable
+      fun XGrids() {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+          val xStep = maxWidth / (temps.count() - 1)
+          (0 until temps.count()).forEach {
+            val even = it % 3 == 0
+            Box(
+              Modifier
+                .absoluteOffset(x = xStep * it - 0.5.dp)
+                .fillMaxHeight(),
+            ) {
+              Box(
+                Modifier
+                  .width(1.dp)
+                  .fillMaxHeight()
+                  .background(Color.White.copy(alpha = if (even) 0.3f else 0.08f)),
+              )
+              if (even) {
+                Text(
+                  text =
+                    times[it]
+                      .atZone(zone)
+                      .get(ChronoField.HOUR_OF_DAY)
+                      .toString(),
+                  style = labelStyle.copy(fontSize = labelStyle.fontSize * 0.8),
+                  maxLines = 1,
+                  modifier = Modifier.align(Alignment.BottomStart),
+                )
+              }
+            }
+          }
+        }
+      }
+
+      @Composable
+      fun DayBands() {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+          val xStep = maxWidth / (times.count() - 1)
+          val runs =
+            remember(times, zone) {
+              times.indices
+                .groupBy { times[it].atZone(zone).toLocalDate() }
+                .map { (date, idx) -> (idx.first()..idx.last()) to date }
+            }
+          runs.forEach { (range, date) ->
+            if (date.toEpochDay() % 2 == 0L) {
+              val x0 = (xStep * range.first - xStep / 2).coerceAtLeast(0.dp)
+              val x1 = (xStep * range.last + xStep / 2).coerceAtMost(maxWidth)
+              Box(
+                Modifier
+                  .absoluteOffset(x = x0)
+                  .width(x1 - x0)
+                  .fillMaxHeight()
+                  .background(Color.White.copy(alpha = 0.05f)),
               )
             }
           }
         }
-        Column {
-          Box(Modifier.padding(start = 4.dp)) {
-            Charts()
-            XGrids()
-            YGrids()
-          }
+      }
+
+      Row(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.SpaceBetween) {
+          labels.forEach { Text("$it°C", style = labelStyle, maxLines = 1) }
+        }
+        Box(
+          Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .padding(start = 4.dp)
+            .clipToBounds(),
+        ) {
+          DayBands()
+          Charts()
+          XGrids()
+          YGrids()
         }
       }
     }

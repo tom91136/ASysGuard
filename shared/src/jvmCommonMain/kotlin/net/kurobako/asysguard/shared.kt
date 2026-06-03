@@ -1,7 +1,7 @@
 package net.kurobako.asysguard
 
 import okhttp3.Interceptor
-import okhttp3.ResponseBody
+import okhttp3.ResponseBody.Companion.toResponseBody
 
 fun scale(
   x: Float,
@@ -10,10 +10,6 @@ fun scale(
   outMin: Float,
   outMax: Float,
 ): Float = (outMax - outMin) * (x - xMin) / (xMax - xMin) + outMin
-
-// fun scale(x: Double, xMin: Double, xMax: Double, outMin: Double, outMax: Double): Double {
-//    return (outMax - outMin) * (x - xMin) / (xMax - xMin) + outMin
-// }
 
 inline fun <reified T> transpose(xs: List<List<T>>): List<List<T>> {
   if (xs.isEmpty()) return emptyList()
@@ -34,12 +30,8 @@ val SafeInterceptor =
         val response = chain.proceed(request)
         return response
           .newBuilder()
-          .body(
-            ResponseBody.create(
-              response.body?.contentType(),
-              response.body!!.string(),
-            ),
-          ).build()
+          .body(response.body!!.string().toResponseBody(response.body?.contentType()))
+          .build()
       } catch (e: Exception) {
         return okhttp3.Response
           .Builder()
@@ -47,7 +39,7 @@ val SafeInterceptor =
           .protocol(okhttp3.Protocol.HTTP_1_1)
           .code(500)
           .message(e.message.orEmpty())
-          .body(ResponseBody.create(null, e.toString()))
+          .body(e.toString().toResponseBody(null))
           .build()
       }
     }

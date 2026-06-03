@@ -22,3 +22,7 @@
 -dontobfuscate
 -keepattributes InnerClasses,EnclosingMethod,Signature,*Annotation*
 -keep @androidx.annotation.Keep class * { *; }
+
+# time4j-base loads tz/leap-second/calendar providers via ServiceLoader; keep them from being shrunk.
+-dontwarn java.time.zone.ZoneRulesProvider
+-keep class net.time4j.** { *; }

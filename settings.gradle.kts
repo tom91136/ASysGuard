@@ -21,3 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "ASysGuard"
 include(":app")
+include(":shared")
+include(":desktopApp")
