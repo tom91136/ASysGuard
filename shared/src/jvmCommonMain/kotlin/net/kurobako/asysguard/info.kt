@@ -411,7 +411,7 @@ fun WeatherChart(
   labelStyle: TextStyle,
 ) {
   val now = Instant.now()
-  val limit = now.plus(Duration.ofDays(4))
+  val limit = now.plus(Duration.ofDays(3))
 
   val timeInstants = hourly.times.map { it.atZone(zone).toInstant() }
   val startIdx = timeInstants.indexOfFirst { it.isBefore(now) }

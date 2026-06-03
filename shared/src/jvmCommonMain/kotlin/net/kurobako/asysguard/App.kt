@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateListOf
@@ -21,8 +22,10 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +38,18 @@ private enum class Boards { NODE, INFO, PROCESS }
 
 private const val TAG = "ASysGuard"
 private const val MAX_STATS = 210
+
+// monitor/info panel text sits above the global font scale; the process table stays at it
+private const val PANEL_SCALE = 1.15f
+
+@Composable
+private fun ScaleText(
+  scale: Float,
+  content: @Composable () -> Unit,
+) {
+  val d = LocalDensity.current
+  CompositionLocalProvider(LocalDensity provides Density(d.density, d.fontScale * scale), content = content)
+}
 
 private fun monoStyle(
   size: Int,
@@ -168,8 +183,12 @@ fun DesktopDashboard(
           .weight(2f)
           .fillMaxWidth(),
       ) {
-        Box(Modifier.weight(1f).fillMaxHeight().border(Dp.Hairline, pane)) { MonitorPanel(stats, labelStyle) }
-        Box(Modifier.weight(1f).fillMaxHeight().border(Dp.Hairline, pane)) { InfoPanel(config, labelStyle) }
+        Box(Modifier.weight(1f).fillMaxHeight().border(Dp.Hairline, pane)) {
+          ScaleText(PANEL_SCALE) { MonitorPanel(stats, labelStyle) }
+        }
+        Box(Modifier.weight(1f).fillMaxHeight().border(Dp.Hairline, pane)) {
+          ScaleText(PANEL_SCALE) { InfoPanel(config, labelStyle) }
+        }
       }
       Box(
         Modifier
