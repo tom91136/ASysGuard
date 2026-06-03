@@ -21,7 +21,15 @@ fun main() =
   application {
     val config = remember { desktopAppConfig() }
     val wake = remember { DbusScreenWake() }
-    val state = rememberWindowState()
+    val state =
+      rememberWindowState(
+        placement =
+          if (System.getProperty("asysguard.fullscreen").toBoolean()) {
+            WindowPlacement.Fullscreen
+          } else {
+            WindowPlacement.Floating
+          },
+      )
 
     fun toggleFullscreen() {
       state.placement =
