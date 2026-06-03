@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <csignal>
@@ -8,6 +9,12 @@
 #include <iostream>
 #include <mutex>
 #include <set>
+#include <unordered_map>
+#include <vector>
+
+#include <pwd.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <wayland-client.h>
 
@@ -273,6 +280,152 @@ struct NodeStat {
   }
 };
 
+struct ProcessStat {
+  int64_t pid{};
+  std::string user{};
+  std::string command{};
+  std::string state{};
+  float cpuPercent{};
+  size_t memRssBytes{};
+  float memPercent{};
+  int64_t threads{};
+  double cpuTimeSeconds{};
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(ProcessStat, pid, user, command, state, cpuPercent, memRssBytes, memPercent,
+                                 threads, cpuTimeSeconds);
+};
+
+struct ProcessSnapshot {
+  int64_t totalTasks{};
+  int64_t runningTasks{};
+  int64_t totalThreads{};
+  double uptimeSeconds{};
+  float loadAvg1m{};
+  float loadAvg5m{};
+  float loadAvg15m{};
+  std::vector<ProcessStat> processes{};
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(ProcessSnapshot, totalTasks, runningTasks, totalThreads, uptimeSeconds, loadAvg1m,
+                                 loadAvg5m, loadAvg15m, processes);
+};
+
+static std::string uidToName(uid_t uid) {
+  static std::unordered_map<uid_t, std::string> cache;
+  if (auto it = cache.find(uid); it != cache.end()) return it->second;
+  std::string name = std::to_string(uid);
+  passwd pw{};
+  passwd *result{};
+  std::vector<char> buf(4096);
+  if (getpwuid_r(uid, &pw, buf.data(), buf.size(), &result) == 0 && result) name = pw.pw_name;
+  cache.emplace(uid, name);
+  return name;
+}
+
+static ProcessSnapshot collectProcesses(size_t topN, const std::string &sortKey) {
+  namespace fs = std::filesystem;
+  static const long hz = sysconf(_SC_CLK_TCK);
+  static const long pageSize = sysconf(_SC_PAGESIZE);
+  static std::mutex mutex;
+  static std::unordered_map<int64_t, unsigned long long> prevTicks;
+  static auto prevTime = std::chrono::steady_clock::now();
+  std::lock_guard<std::mutex> lock(mutex);
+
+  auto nowTime = std::chrono::steady_clock::now();
+  double wallSeconds = std::chrono::duration<double>(nowTime - prevTime).count();
+  prevTime = nowTime;
+
+  size_t memTotalKb = 0;
+  if (std::ifstream meminfo("/proc/meminfo"); meminfo) {
+    std::string key, unit;
+    size_t value;
+    while (meminfo >> key >> value >> unit)
+      if (key == "MemTotal:") {
+        memTotalKb = value;
+        break;
+      }
+  }
+
+  std::vector<ProcessStat> out;
+  int64_t totalTasks = 0, runningTasks = 0, totalThreads = 0;
+  std::unordered_map<int64_t, unsigned long long> curTicks;
+  std::error_code ec;
+  for (const auto &entry : fs::directory_iterator("/proc", ec)) {
+    const auto name = entry.path().filename().string();
+    if (name.empty() || !std::all_of(name.begin(), name.end(), [](unsigned char c) { return std::isdigit(c); }))
+      continue;
+    try {
+      std::ifstream statFile(entry.path() / "stat");
+      if (!statFile) continue;
+      std::string line;
+      std::getline(statFile, line);
+      auto open = line.find('(');
+      auto close = line.rfind(')');
+      if (open == std::string::npos || close == std::string::npos || close < open) continue;
+      std::string comm = line.substr(open + 1, close - open - 1);
+
+      std::istringstream rest(line.substr(close + 2));
+      std::vector<std::string> f;
+      for (std::string tok; rest >> tok;)
+        f.push_back(tok);
+      if (f.size() < 22) continue; // state ppid ... utime(11) stime(12) ... num_threads(17) ... rss(21)
+
+      ProcessStat ps;
+      ps.pid = std::stoll(name);
+      ps.state = f[0];
+      ps.threads = std::stoll(f[17]);
+      ps.memRssBytes = std::stoull(f[21]) * static_cast<size_t>(pageSize);
+      ps.memPercent =
+          memTotalKb ? static_cast<float>(100.0 * (ps.memRssBytes / 1024.0) / static_cast<double>(memTotalKb)) : 0.f;
+
+      unsigned long long ticks = std::stoull(f[11]) + std::stoull(f[12]);
+      ps.cpuTimeSeconds = hz > 0 ? static_cast<double>(ticks) / static_cast<double>(hz) : 0.0;
+      curTicks[ps.pid] = ticks;
+      if (auto it = prevTicks.find(ps.pid); it != prevTicks.end() && wallSeconds > 0 && hz > 0) {
+        unsigned long long delta = ticks >= it->second ? ticks - it->second : 0;
+        ps.cpuPercent = static_cast<float>(100.0 * static_cast<double>(delta) / (static_cast<double>(hz) * wallSeconds));
+      }
+
+      if (std::ifstream cmdline(entry.path() / "cmdline", std::ios::binary); cmdline) {
+        std::string raw((std::istreambuf_iterator<char>(cmdline)), std::istreambuf_iterator<char>());
+        for (auto &c : raw)
+          if (c == '\0') c = ' ';
+        while (!raw.empty() && raw.back() == ' ')
+          raw.pop_back();
+        ps.command = raw;
+      }
+      if (ps.command.empty()) ps.command = "[" + comm + "]";
+
+      struct stat st{};
+      ps.user = ::stat(entry.path().c_str(), &st) == 0 ? uidToName(st.st_uid) : "?";
+
+      totalTasks++;
+      totalThreads += ps.threads;
+      if (ps.state == "R") runningTasks++;
+      out.push_back(std::move(ps));
+    } catch (const std::exception &) {
+      continue; // process vanished mid-scan or unparseable line
+    }
+  }
+  prevTicks = std::move(curTicks);
+
+  const size_t n = (topN > 0 && topN < out.size()) ? topN : out.size();
+  if (sortKey == "mem")
+    std::partial_sort(out.begin(), out.begin() + n, out.end(),
+                      [](const auto &a, const auto &b) { return a.memRssBytes > b.memRssBytes; });
+  else
+    std::partial_sort(out.begin(), out.begin() + n, out.end(),
+                      [](const auto &a, const auto &b) { return a.cpuPercent > b.cpuPercent; });
+  out.resize(n);
+
+  ProcessSnapshot snap;
+  snap.totalTasks = totalTasks;
+  snap.runningTasks = runningTasks;
+  snap.totalThreads = totalThreads;
+  if (std::ifstream uptimeFile("/proc/uptime"); uptimeFile) uptimeFile >> snap.uptimeSeconds;
+  if (std::ifstream loadFile("/proc/loadavg"); loadFile)
+    loadFile >> snap.loadAvg1m >> snap.loadAvg5m >> snap.loadAvg15m;
+  snap.processes = std::move(out);
+  return snap;
+}
+
 int main(int argc, char *argv[]) {
   static httplib::Server s;
   static wl_display *display{};
@@ -354,6 +507,17 @@ int main(int argc, char *argv[]) {
 
     s.Get("/display.json", [&](const httplib::Request &, httplib::Response &res) {
       const nlohmann::json json = DisplayStat{displayOn};
+      res.set_content(json.dump(), "application/json");
+    });
+
+    s.Get("/processes.json", [&](const httplib::Request &req, httplib::Response &res) {
+      size_t n = 30;
+      if (req.has_param("n")) try {
+          n = std::stoul(req.get_param_value("n"));
+        } catch (...) {
+        }
+      const std::string sort = req.has_param("sort") ? req.get_param_value("sort") : "cpu";
+      const nlohmann::json json = collectProcesses(n, sort);
       res.set_content(json.dump(), "application/json");
     });
     std::cout << "Server listening on " << config.host << ":" << config.port << std::endl;
