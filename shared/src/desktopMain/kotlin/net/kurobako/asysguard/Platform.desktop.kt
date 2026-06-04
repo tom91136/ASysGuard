@@ -28,7 +28,8 @@ internal interface ScreenSaver : DBusInterface {
   fun UnInhibit(cookie: UInt32)
 }
 
-// The inhibit cookie is bound to the live connection, so it is held for the app's lifetime.
+// Mirrors the host display: inhibits the screensaver while it is on and drives DPMS so the local
+// panel blanks in step with the host. The inhibit cookie is bound to the live connection.
 class DbusScreenWake : ScreenWakeController {
   private val screenSaver: ScreenSaver? by lazy {
     runCatching {
@@ -42,8 +43,16 @@ class DbusScreenWake : ScreenWakeController {
       .getOrNull()
   }
   private var cookie: UInt32? = null
+  private var lastOn: Boolean? = null
 
   override fun keepAwake(on: Boolean) {
+    if (lastOn == on) return
+    lastOn = on
+    toggleInhibit(on)
+    dpms(on)
+  }
+
+  private fun toggleInhibit(on: Boolean) {
     val ss = screenSaver ?: return
     runCatching {
       if (on) {
@@ -55,6 +64,15 @@ class DbusScreenWake : ScreenWakeController {
         }
       }
     }.onFailure { logError("DbusScreenWake", "inhibit toggle failed", it) }
+  }
+
+  private fun dpms(on: Boolean) {
+    runCatching {
+      ProcessBuilder("kscreen-doctor", "--dpms", if (on) "on" else "off")
+        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+        .redirectError(ProcessBuilder.Redirect.DISCARD)
+        .start()
+    }.onFailure { logError("DbusScreenWake", "dpms toggle failed", it) }
   }
 }
 
