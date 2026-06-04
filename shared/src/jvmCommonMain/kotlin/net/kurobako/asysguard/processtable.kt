@@ -4,8 +4,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -120,7 +122,6 @@ private val userWidth = 64.dp
 private val resWidth = 70.dp
 private val pctWidth = 72.dp
 private val sparkWidth = 144.dp
-private val sparkHeight = 22.dp
 private val stateWidth = 20.dp
 private val timeWidth = 92.dp
 
@@ -149,7 +150,7 @@ private fun Sparkline(
   Canvas(
     Modifier
       .width(sparkWidth)
-      .height(sparkHeight)
+      .fillMaxHeight()
       .padding(end = 6.dp)
       .border(Dp.Hairline, Color.White.copy(alpha = 0.2f), RoundedCornerShape(2.dp))
       .padding(horizontal = 2.dp, vertical = 2.dp),
@@ -244,6 +245,7 @@ fun ProcessTable(
         Row(
           Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .padding(horizontal = 4.dp, vertical = 1.dp),
           verticalAlignment = Alignment.CenterVertically,
         ) {
