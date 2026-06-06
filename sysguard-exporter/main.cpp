@@ -332,6 +332,9 @@ static ProcessSnapshot collectProcesses(size_t topN, const std::string &sortKey)
   double wallSeconds = std::chrono::duration<double>(nowTime - prevTime).count();
   prevTime = nowTime;
 
+  double uptime = 0;
+  if (std::ifstream uptimeFile("/proc/uptime"); uptimeFile) uptimeFile >> uptime;
+
   size_t memTotalKb = 0;
   if (std::ifstream meminfo("/proc/meminfo"); meminfo) {
     std::string key, unit;
@@ -365,7 +368,7 @@ static ProcessSnapshot collectProcesses(size_t topN, const std::string &sortKey)
       std::vector<std::string> f;
       for (std::string tok; rest >> tok;)
         f.push_back(tok);
-      if (f.size() < 22) continue; // state ppid ... utime(11) stime(12) ... num_threads(17) ... rss(21)
+      if (f.size() < 22) continue; // state ppid ... utime(11) stime(12) ... num_threads(17) ... starttime(19) ... rss(21)
 
       ProcessStat ps;
       ps.pid = std::stoll(name);
@@ -381,6 +384,10 @@ static ProcessSnapshot collectProcesses(size_t topN, const std::string &sortKey)
       if (auto it = prevTicks.find(ps.pid); it != prevTicks.end() && wallSeconds > 0 && hz > 0) {
         unsigned long long delta = ticks >= it->second ? ticks - it->second : 0;
         ps.cpuPercent = static_cast<float>(100.0 * static_cast<double>(delta) / (static_cast<double>(hz) * wallSeconds));
+      } else if (hz > 0) {
+        // first sighting: lifetime average like ps, else short-lived processes pin at 0% and never sort into topN
+        double age = uptime - static_cast<double>(std::stoull(f[19])) / static_cast<double>(hz);
+        if (age > 0) ps.cpuPercent = static_cast<float>(100.0 * ps.cpuTimeSeconds / age);
       }
 
       if (std::ifstream cmdline(entry.path() / "cmdline", std::ios::binary); cmdline) {
@@ -419,7 +426,7 @@ static ProcessSnapshot collectProcesses(size_t topN, const std::string &sortKey)
   snap.totalTasks = totalTasks;
   snap.runningTasks = runningTasks;
   snap.totalThreads = totalThreads;
-  if (std::ifstream uptimeFile("/proc/uptime"); uptimeFile) uptimeFile >> snap.uptimeSeconds;
+  snap.uptimeSeconds = uptime;
   if (std::ifstream loadFile("/proc/loadavg"); loadFile)
     loadFile >> snap.loadAvg1m >> snap.loadAvg5m >> snap.loadAvg15m;
   snap.processes = std::move(out);
