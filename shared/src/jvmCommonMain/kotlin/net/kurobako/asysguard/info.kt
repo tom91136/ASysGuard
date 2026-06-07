@@ -21,7 +21,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -40,7 +39,6 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.time4j.ClockUnit
@@ -83,6 +81,7 @@ fun InfoPreview() {
       locationAltLon = 120.68,
       locationAltTimezone = "Asia/Taipei",
     ),
+    ZonedDateTime.now(),
     TextStyle(color = Color.White, fontSize = 12.sp),
   )
 }
@@ -90,9 +89,9 @@ fun InfoPreview() {
 @Composable
 fun InfoPanel(
   config: AppConfig,
+  now: ZonedDateTime,
   labelStyle: TextStyle,
 ) {
-  val now = remember { mutableStateOf(ZonedDateTime.now()) }
   val owm = remember { OpenMetro.create() }
   val cal = remember { PublishedCalendar.create(config.outlookIcsUrl) }
 
@@ -100,15 +99,8 @@ fun InfoPanel(
     remember { mutableStateOf(Pair(ZoneId.systemDefault(), Forecast.Hourly())) }
   val calendarData = remember { mutableStateOf(emptyList<PublishedCalendar.Event>()) }
 
-  val scope = rememberCoroutineScope()
   LaunchedEffect(0) {
-    scope.launch(Dispatchers.Main) {
-      while (true) {
-        now.value = ZonedDateTime.now()
-        delay(1000)
-      }
-    }
-    scope.launch(Dispatchers.Main) {
+    launch {
       while (true) {
         try {
           val response =
@@ -129,7 +121,7 @@ fun InfoPanel(
         delay(5.minutes)
       }
     }
-    scope.launch(Dispatchers.Main) {
+    launch {
       while (true) {
         val pastWindow = ZonedDateTime.now().minusDays(1)
         val futureWindow = ZonedDateTime.now().plusDays(7)
@@ -160,7 +152,7 @@ fun InfoPanel(
                   .fillMaxHeight(),
               latitude = config.locationMainLat,
               longitude = config.locationMainLon,
-              time = now.value.withZoneSameInstant(ZoneId.of(config.locationMainTimezone)),
+              time = now.withZoneSameInstant(ZoneId.of(config.locationMainTimezone)),
               labelStyle = labelStyle,
             )
           }
@@ -172,14 +164,14 @@ fun InfoPanel(
                   .fillMaxHeight(),
               latitude = config.locationAltLat,
               longitude = config.locationAltLon,
-              time = now.value.withZoneSameInstant(ZoneId.of(config.locationAltTimezone)),
+              time = now.withZoneSameInstant(ZoneId.of(config.locationAltTimezone)),
               labelStyle = labelStyle,
             )
           }
         }
         Column(Modifier.weight(1.5f)) {
           AnalogueClock(
-            now.value,
+            now,
           )
         }
       }
@@ -206,7 +198,7 @@ fun InfoPanel(
       ) {
         FlowCalendar(
           labelStyle = labelStyle,
-          today = now.value.toLocalDate(),
+          today = now.toLocalDate(),
         )
       }
     }

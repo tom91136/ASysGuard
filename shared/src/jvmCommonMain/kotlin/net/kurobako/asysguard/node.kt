@@ -101,6 +101,13 @@ private const val tempAxisMaxC = 105f
 private val tempColour = Colours.pick(4)
 
 @Keep
+data class Aggregate(
+  val metrics: NodeStat? = null,
+  val processes: ProcessSnapshot? = null,
+  val display: DisplayStat? = null,
+)
+
+@Keep
 interface ASysGuardServer {
   @GET("metrics.json")
   suspend fun metric(): Response<NodeStat>
@@ -113,6 +120,13 @@ interface ASysGuardServer {
     @Query("n") n: Int,
     @Query("sort") sort: String,
   ): Response<ProcessSnapshot>
+
+  @GET("aggregate.json")
+  suspend fun aggregate(
+    @Query("sources") sources: String,
+    @Query("n") n: Int,
+    @Query("sort") sort: String,
+  ): Response<Aggregate>
 
   companion object {
     fun create(baseUrl: String): ASysGuardServer =

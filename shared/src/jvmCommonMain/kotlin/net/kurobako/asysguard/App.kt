@@ -13,11 +13,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,9 +26,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import java.time.ZonedDateTime
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -91,10 +88,6 @@ private suspend fun ASysGuardServer.refreshMetric(
   }
 }
 
-private suspend fun ASysGuardServer.refreshProcesses(state: MutableState<ProcessSnapshot>) {
-  processes(40, "cpu").let { if (it.isSuccessful) it.body()?.let { snap -> state.value = snap } }
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun App(
@@ -103,7 +96,6 @@ fun App(
   wake: ScreenWakeController,
 ) {
   Surface(color = Color.Black) {
-    val scope = rememberCoroutineScope()
     val server = remember { ASysGuardServer.create(config.sysguardExporterHost) }
     val board =
       remember { mutableStateOf(Boards.entries[deviceId.hashCode().mod(Boards.entries.size)]) }
@@ -120,18 +112,22 @@ fun App(
         Boards.NODE -> {
           val stats = remember { mutableStateListOf<NodeStat>() }
           LaunchedEffect(board.value) {
-            poll(1.seconds) { scope.launch(Dispatchers.Main) { server.refreshMetric(stats, wake) } }
+            poll(1.seconds) { server.refreshMetric(stats, wake) }
           }
           MonitorPanel(stats, monoStyle(14, shadow = true))
         }
 
         Boards.INFO -> {
+          val now = remember { mutableStateOf(ZonedDateTime.now()) }
           LaunchedEffect(board.value) {
-            poll(3.seconds) {
-              scope.launch(Dispatchers.Main) { server.display().body()?.let { wake.keepAwake(it.displayOn) } }
+            var tick = 0L
+            poll(1.seconds) {
+              now.value = ZonedDateTime.now()
+              if (tick % 3 == 0L) server.display().body()?.let { wake.keepAwake(it.displayOn) }
+              tick++
             }
           }
-          InfoPanel(config, monoStyle(16, shadow = true))
+          InfoPanel(config, now.value, monoStyle(16, shadow = true))
         }
 
         Boards.PROCESS -> {
@@ -139,16 +135,14 @@ fun App(
           val cpuCount = remember { mutableStateOf(0) }
           LaunchedEffect(board.value) {
             poll(2.seconds) {
-              scope.launch(Dispatchers.Main) {
-                server.metric().body()?.let {
+              server.aggregate("metrics,processes", 40, "cpu").body()?.let { agg ->
+                agg.metrics?.let {
                   wake.keepAwake(it.displayOn)
                   if (it.cpus.isNotEmpty()) cpuCount.value = it.cpus.size
                 }
+                agg.processes?.let { processes.value = it }
               }
             }
-          }
-          LaunchedEffect(board.value) {
-            poll(2.seconds) { scope.launch(Dispatchers.Main) { server.refreshProcesses(processes) } }
           }
           ProcessTable(processes.value, cpuCount.value * 100f, monoStyle(18, shadow = false))
         }
@@ -163,16 +157,38 @@ fun DesktopDashboard(
   wake: ScreenWakeController,
 ) {
   Surface(color = Color.Black) {
-    val scope = rememberCoroutineScope()
     val server = remember { ASysGuardServer.create(config.sysguardExporterHost) }
     val stats = remember { mutableStateListOf<NodeStat>() }
     val processes = remember { mutableStateOf(ProcessSnapshot()) }
+    val now = remember { mutableStateOf(ZonedDateTime.now()) }
+    val displayOn = remember { mutableStateOf(true) }
 
+    // one aggregate request per tick paints one frame; display off drops to a cheap probe with no state writes
     LaunchedEffect(Unit) {
-      poll(1.seconds) { scope.launch(Dispatchers.Main) { server.refreshMetric(stats, wake) } }
-    }
-    LaunchedEffect(Unit) {
-      poll(2.seconds) { scope.launch(Dispatchers.Main) { server.refreshProcesses(processes) } }
+      while (true) {
+        try {
+          if (!displayOn.value) {
+            server.aggregate("display", 0, "cpu").body()?.display?.let {
+              wake.keepAwake(it.displayOn)
+              displayOn.value = it.displayOn
+            }
+            if (displayOn.value) continue // refresh immediately on wake
+          } else {
+            val agg = server.aggregate("metrics,processes", 40, "cpu").body()
+            now.value = ZonedDateTime.now()
+            agg?.metrics?.let {
+              wake.keepAwake(it.displayOn)
+              displayOn.value = it.displayOn
+              if (stats.size >= MAX_STATS) stats.removeRange(0, stats.size - (MAX_STATS - 1))
+              stats.add(it)
+            }
+            agg?.processes?.let { processes.value = it }
+          }
+        } catch (e: Exception) {
+          logError(TAG, "Fetch failed", e)
+        }
+        delay(if (displayOn.value) 1.5.seconds else 5.seconds)
+      }
     }
 
     val labelStyle = monoStyle(14, shadow = false)
@@ -187,7 +203,7 @@ fun DesktopDashboard(
           ScaleText(PANEL_SCALE) { MonitorPanel(stats, labelStyle) }
         }
         Box(Modifier.weight(1f).fillMaxHeight().border(Dp.Hairline, pane)) {
-          ScaleText(PANEL_SCALE) { InfoPanel(config, labelStyle) }
+          ScaleText(PANEL_SCALE) { InfoPanel(config, now.value, labelStyle) }
         }
       }
       Box(

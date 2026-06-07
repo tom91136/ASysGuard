@@ -593,6 +593,24 @@ int main(int argc, char *argv[]) {
       const nlohmann::json json = collectProcesses(n, sort);
       res.set_content(json.dump(), "application/json");
     });
+
+    // single round trip for clients polling several sources; omitting sources returns all
+    s.Get("/aggregate.json", [&](const httplib::Request &req, httplib::Response &res) {
+      size_t n = 30;
+      if (req.has_param("n")) try {
+          n = std::stoul(req.get_param_value("n"));
+        } catch (...) {
+        }
+      const std::string sort = req.has_param("sort") ? req.get_param_value("sort") : "cpu";
+      std::istringstream ss(req.has_param("sources") ? req.get_param_value("sources") : "metrics,processes,display");
+      nlohmann::json json;
+      for (std::string src; std::getline(ss, src, ',');) {
+        if (src == "metrics") json["metrics"] = NodeStat::collect(config, displayOn);
+        else if (src == "processes") json["processes"] = collectProcesses(n, sort);
+        else if (src == "display") json["display"] = DisplayStat{displayOn};
+      }
+      res.set_content(json.dump(), "application/json");
+    });
     std::cout << "Server listening on " << config.host << ":" << config.port << std::endl;
     s.listen(config.host, config.port);
   });
