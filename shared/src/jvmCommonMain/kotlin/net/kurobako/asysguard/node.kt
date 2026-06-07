@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -26,6 +27,7 @@ import retrofit2.http.Query
 import java.util.Locale
 import kotlin.math.absoluteValue
 import kotlin.math.max
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 @Keep
@@ -40,6 +42,7 @@ data class CPUStat(
   val coreId: Long = 0,
   val frequencyKHz: Long = 0,
   val utilisation: Float = 0f,
+  val temperatureC: Float = 0f,
 )
 
 @Keep
@@ -92,6 +95,11 @@ data class NodeStat(
 fun Float.roundToLongOr(default: Long = -1L): Long =
   if (this.isNaN()) default else this.roundToLong()
 
+// fixed axis keeps lines comparable across cores
+private const val tempAxisMinC = 30f
+private const val tempAxisMaxC = 105f
+private val tempColour = Colours.pick(4)
+
 @Keep
 interface ASysGuardServer {
   @GET("metrics.json")
@@ -127,10 +135,10 @@ interface ASysGuardServer {
 fun MonitorPreview() {
   val cpuStats =
     mapOf(
-      "0" to CPUStat(ordinal = 0, coreId = 0, frequencyKHz = 2800000, utilisation = 0.35f),
-      "1" to CPUStat(ordinal = 1, coreId = 0, frequencyKHz = 2800000, utilisation = 0.40f),
-      "2" to CPUStat(ordinal = 2, coreId = 1, frequencyKHz = 2800000, utilisation = 0.30f),
-      "3" to CPUStat(ordinal = 3, coreId = 1, frequencyKHz = 2800000, utilisation = 0.45f),
+      "0" to CPUStat(ordinal = 0, coreId = 0, frequencyKHz = 2800000, utilisation = 0.35f, temperatureC = 62f),
+      "1" to CPUStat(ordinal = 1, coreId = 0, frequencyKHz = 2800000, utilisation = 0.40f, temperatureC = 62f),
+      "2" to CPUStat(ordinal = 2, coreId = 1, frequencyKHz = 2800000, utilisation = 0.30f, temperatureC = 58f),
+      "3" to CPUStat(ordinal = 3, coreId = 1, frequencyKHz = 2800000, utilisation = 0.45f, temperatureC = 58f),
     )
 
   val networkStats =
@@ -271,6 +279,28 @@ fun CoreUsage(
                 ),
                 { it.utilisation },
               )
+
+              val temps = s.map { t -> t.second.maxOfOrNull { it.temperatureC } ?: 0f }
+              if (temps.any { it > 0f }) {
+                StackedLineChartView(
+                  LineChart(
+                    tempAxisMinC,
+                    tempAxisMaxC,
+                    listOf(Series(temps, tempColour, fill = false)),
+                  ),
+                  { it },
+                )
+                Text(
+                  """${temps.last().roundToInt()}C
+⌈${temps.max().roundToInt()}⌉
+⌊${temps.min().roundToInt()}⌋""",
+                  style = labelStyle.copy(color = tempColour),
+                  textAlign = TextAlign.End,
+                  modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp),
+                )
+              }
 
               val current = s.lastOrNull()
               Text(

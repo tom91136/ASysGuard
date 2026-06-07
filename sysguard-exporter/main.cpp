@@ -2,6 +2,7 @@
 #include <cctype>
 #include <chrono>
 #include <csignal>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -120,7 +121,60 @@ struct CPUStat {
   int64_t coreId{};
   int64_t frequencyKHz{};
   float utilisation{};
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(CPUStat, ordinal, coreId, frequencyKHz, utilisation);
+  float temperatureC{};
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(CPUStat, ordinal, coreId, frequencyKHz, utilisation, temperatureC);
+};
+
+// coretemp is per core ("Core N"), k10temp per die ("TccdN"); map each cpu to the most specific sensor, else the package one
+struct CpuTempSources {
+  std::vector<std::string> paths{};
+  std::vector<int> cpuToPath{}; // per cpu ordinal, -1 when no sensor
+
+  static CpuTempSources resolve(int64_t numCores) {
+    namespace fs = std::filesystem;
+    std::unordered_map<int64_t, std::string> byCore, byDie;
+    std::string package;
+    std::error_code ec;
+    for (const auto &hw : fs::directory_iterator("/sys/class/hwmon", ec)) {
+      std::ifstream nameFile(hw.path() / "name");
+      std::string name;
+      if (!nameFile || !std::getline(nameFile, name) || (name != "coretemp" && name != "k10temp")) continue;
+      for (const auto &f : fs::directory_iterator(hw.path(), ec)) {
+        const auto leaf = f.path().filename().string();
+        if (leaf.rfind("temp", 0) != 0 || leaf.find("_label") == std::string::npos) continue;
+        std::ifstream labelFile(f.path());
+        std::string label;
+        if (!labelFile || !std::getline(labelFile, label)) continue;
+        const auto input = (hw.path() / (leaf.substr(0, leaf.find('_')) + "_input")).string();
+        int n;
+        if (std::sscanf(label.c_str(), "Core %d", &n) == 1) byCore[n] = input;
+        else if (std::sscanf(label.c_str(), "Tccd%d", &n) == 1) byDie[n - 1] = input;
+        else if (label == "Tctl" || label.rfind("Package", 0) == 0) package = input;
+      }
+      break;
+    }
+
+    CpuTempSources sources;
+    sources.cpuToPath.assign(numCores, -1);
+    std::unordered_map<std::string, int> seen; // dedupe so shared sensors read once per collect
+    for (int64_t i = 0; i < numCores; ++i) {
+      auto topology = [&](const char *leaf) -> int64_t {
+        std::ifstream f("/sys/devices/system/cpu/cpu" + std::to_string(i) + "/topology/" + leaf);
+        int64_t v = -1;
+        if (f) f >> v;
+        return v;
+      };
+      std::string path;
+      if (auto it = byCore.find(topology("core_id")); it != byCore.end()) path = it->second;
+      else if (auto dit = byDie.find(topology("die_id")); dit != byDie.end()) path = dit->second;
+      else path = package;
+      if (path.empty()) continue;
+      auto [it, inserted] = seen.emplace(path, static_cast<int>(sources.paths.size()));
+      if (inserted) sources.paths.push_back(path);
+      sources.cpuToPath[i] = it->second;
+    }
+    return sources;
+  }
 };
 
 struct DisplayStat {
@@ -151,7 +205,8 @@ struct NodeStat {
     for (const auto &[id, cpu] : stats.cpus) {
       os << id                                                               //
          << "(" << cpu.coreId << ") " << (cpu.frequencyKHz / 1000) << "Mhz " //
-         << " " << (cpu.utilisation * 100) << "%\n";
+         << " " << (cpu.utilisation * 100) << "%"                            //
+         << " " << cpu.temperatureC << "C\n";
     }
     os << "\n";
 
@@ -192,7 +247,17 @@ struct NodeStat {
     static std::mutex cpuMutex; // collect runs on httplib's thread pool; serialise the shared counters
     static std::vector<size_t> prevTotal(numCores, 0);
     static std::vector<size_t> prevIdle(numCores, 0);
+    static const CpuTempSources tempSources = CpuTempSources::resolve(numCores);
     std::lock_guard<std::mutex> cpuLock(cpuMutex);
+
+    std::vector<float> tempC(tempSources.paths.size(), 0.f);
+    for (size_t t = 0; t < tempC.size(); ++t) {
+      if (std::ifstream tempFile(tempSources.paths[t]); tempFile) {
+        long milliC = 0;
+        tempFile >> milliC;
+        tempC[t] = static_cast<float>(milliC) / 1000.f;
+      }
+    }
 
     stats.cpus.reserve(numCores);
     for (int64_t i = 0; i < numCores; ++i) {
@@ -205,6 +270,7 @@ struct NodeStat {
       if (std::ifstream coreIdFile(coreIdPath); coreIdFile) {
         coreIdFile >> stats.cpus[id].coreId;
       }
+      if (int t = tempSources.cpuToPath[i]; t >= 0) stats.cpus[id].temperatureC = tempC[t];
     }
 
     if (std::ifstream statFile("/proc/stat"); statFile) {
