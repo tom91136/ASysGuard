@@ -7,7 +7,8 @@ cd "$(dirname "$0")"
 case "${1:?usage: deploy.sh server|<client-host>}" in
 server)
   cmake --build sysguard-exporter/cmake-build-release -j
-  cp sysguard-exporter/cmake-build-release/sysguard-exporter "$HOME/.local/bin/sysguard-exporter"
+  # install unlinks first; cp would hit ETXTBSY overwriting the running binary
+  install -m 755 sysguard-exporter/cmake-build-release/sysguard-exporter "$HOME/.local/bin/sysguard-exporter"
   systemctl --user restart sysguard-exporter
   systemctl --user is-active sysguard-exporter
   ;;
