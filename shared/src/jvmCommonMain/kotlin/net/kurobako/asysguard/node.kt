@@ -300,7 +300,7 @@ fun CoreUsage(
                   LineChart(
                     tempAxisMinC,
                     tempAxisMaxC,
-                    listOf(Series(temps, tempColour, fill = false)),
+                    listOf(Series(temps, tempColour.copy(alpha = 0.5f), fill = false)),
                   ),
                   { it },
                 )
@@ -512,7 +512,8 @@ fun NetworkUsage(
       }
     }
     Text(
-      text = """Network: $name
+      text = """Network:
+$name
  TX:${BinaryByteUnit.format(normalised.lastOrNull()?.first?.coerceAtLeast(0) ?: 0)}
  RX:${BinaryByteUnit.format(normalised.lastOrNull()?.second?.coerceAtLeast(0) ?: 0)}""",
       style = labelStyle,

@@ -406,8 +406,8 @@ fun WeatherChart(
   val limit = now.plus(Duration.ofDays(3))
 
   val timeInstants = hourly.times.map { it.atZone(zone).toInstant() }
-  val startIdx = timeInstants.indexOfFirst { it.isBefore(now) }
-  val endIdx = timeInstants.indexOfFirst { it.isAfter(limit) }
+  val startIdx = timeInstants.indexOfLast { it.isBefore(now) }.coerceAtLeast(0)
+  val endIdx = timeInstants.indexOfFirst { it.isAfter(limit) }.takeIf { it >= 0 } ?: timeInstants.size
 
   fun <T> List<T>.subListOrSelf(): List<T> =
     if (this.isEmpty()) this else this.subList(startIdx, endIdx)
@@ -536,7 +536,7 @@ fun WeatherChart(
                   .absoluteOffset(x = x0)
                   .width(x1 - x0)
                   .fillMaxHeight()
-                  .background(Color.White.copy(alpha = 0.05f)),
+                  .background(Color.White.copy(alpha = 0.10f)),
               )
             }
           }

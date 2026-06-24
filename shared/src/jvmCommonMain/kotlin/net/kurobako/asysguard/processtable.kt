@@ -39,6 +39,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jakewharton.byteunits.BinaryByteUnit
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -171,6 +172,7 @@ private fun Sparkline(
 @Composable
 fun ProcessTable(
   snapshot: ProcessSnapshot,
+  networks: Map<String, NetworkStat>,
   cpuCapacityPercent: Float,
   labelStyle: TextStyle,
 ) {
@@ -192,7 +194,7 @@ fun ProcessTable(
   }
 
   val summary =
-    remember(snapshot) {
+    remember(snapshot, networks) {
       buildAnnotatedString {
         fun label(s: String) = withStyle(SpanStyle(color = dim)) { append(s) }
         fun value(s: String) = withStyle(SpanStyle(color = Color.White)) { append(s) }
@@ -203,6 +205,13 @@ fun ProcessTable(
         label("Load "); value("%.2f %.2f %.2f".format(snapshot.loadAvg1m, snapshot.loadAvg5m, snapshot.loadAvg15m))
         append("     ")
         label("Up "); value(fmtUptime(snapshot.uptimeSeconds))
+        networks.forEach { (name, net) ->
+          append("     ")
+          value("$name: ")
+          label("TX total: "); value(BinaryByteUnit.format(net.inetTxTotalBytes))
+          label(" | ")
+          label("RX total: "); value(BinaryByteUnit.format(net.inetRxTotalBytes))
+        }
       }
     }
 
@@ -290,6 +299,7 @@ fun ProcessTablePreview() {
           ProcessStat(42, "root", "[kworker/0:1]", "I", 0f, 0, 0f, 1, 0.5),
         ),
     ),
+    mapOf("enp16s0" to NetworkStat(inetTxTotalBytes = 43_500_000_000, inetRxTotalBytes = 10_240)),
     cpuCapacityPercent = 1600f,
     TextStyle(color = Color.White, fontSize = 15.sp),
   )

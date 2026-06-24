@@ -133,18 +133,20 @@ fun App(
         Boards.PROCESS -> {
           val processes = remember { mutableStateOf(ProcessSnapshot()) }
           val cpuCount = remember { mutableStateOf(0) }
+          val networks = remember { mutableStateOf<Map<String, NetworkStat>>(emptyMap()) }
           LaunchedEffect(board.value) {
             poll(2.seconds) {
               server.aggregate("metrics,processes", 40, "cpu").body()?.let { agg ->
                 agg.metrics?.let {
                   wake.keepAwake(it.displayOn)
                   if (it.cpus.isNotEmpty()) cpuCount.value = it.cpus.size
+                  networks.value = it.networks
                 }
                 agg.processes?.let { processes.value = it }
               }
             }
           }
-          ProcessTable(processes.value, cpuCount.value * 100f, monoStyle(18, shadow = false))
+          ProcessTable(processes.value, networks.value, cpuCount.value * 100f, monoStyle(18, shadow = false))
         }
       }
     }
@@ -212,7 +214,12 @@ fun DesktopDashboard(
           .fillMaxWidth()
           .border(Dp.Hairline, pane),
       ) {
-        ProcessTable(processes.value, (stats.lastOrNull()?.cpus?.size ?: 0) * 100f, labelStyle.copy(fontSize = 18.sp))
+        ProcessTable(
+          processes.value,
+          stats.lastOrNull()?.networks ?: emptyMap(),
+          (stats.lastOrNull()?.cpus?.size ?: 0) * 100f,
+          labelStyle.copy(fontSize = 18.sp),
+        )
       }
     }
   }
